@@ -30,3 +30,12 @@ expect "$(local_aws logs describe-log-groups --log-group-name-prefix "$group" --
 expect "$(local_aws s3api get-bucket-versioning --bucket "$bucket" --query Status)" Enabled "S3 versioning on $bucket"
 expect "$(local_aws s3api get-bucket-encryption --bucket "$bucket" --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm')" AES256 "S3 default encryption"
 expect "$(local_aws s3api get-public-access-block --bucket "$bucket" --query 'length(values(PublicAccessBlockConfiguration)[?@ == `true`])')" 4 "S3 public access block settings"
+
+if portal=$(output portal_url 2>/dev/null); then
+  api=$(output api_url)
+  expect "$(local_aws ecs describe-services --cluster "$cluster" --services claimsense-local --query 'services[0].runningCount')" 1 "Running ECS task"
+  curl -fsS --max-time 5 "$api/health" >/dev/null
+  echo "OK: ECS API $api"
+  curl -fsS --max-time 5 "${portal}_stcore/health" >/dev/null
+  echo "OK: ECS portal $portal"
+fi

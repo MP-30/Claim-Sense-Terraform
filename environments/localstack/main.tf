@@ -23,8 +23,10 @@ provider "aws" {
 
   endpoints {
     cloudwatchlogs = local.gateway
+    ec2            = local.gateway
     ecr            = local.gateway
     ecs            = local.gateway
+    iam            = local.gateway
     s3             = local.gateway
     sts            = local.gateway
   }

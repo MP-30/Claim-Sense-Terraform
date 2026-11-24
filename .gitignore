@@ -6,3 +6,5 @@
 crash.log
 crash.*.log
 .env
+environments/localstack/local-deployment.auto.tfvars
+environments/localstack/local-model.auto.tfvars.json
