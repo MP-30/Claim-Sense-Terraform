@@ -33,9 +33,23 @@ expect "$(local_aws s3api get-public-access-block --bucket "$bucket" --query 'le
 
 if portal=$(output portal_url 2>/dev/null); then
   api=$(output api_url)
+  database=$(output database_identifier)
+  expect "$(local_aws rds describe-db-instances --db-instance-identifier "$database" --query 'DBInstances[0].DBInstanceStatus')" available "RDS instance $database"
   expect "$(local_aws ecs describe-services --cluster "$cluster" --services claimsense-local --query 'services[0].runningCount')" 1 "Running ECS task"
   curl -fsS --max-time 5 "$api/health" >/dev/null
   echo "OK: ECS API $api"
   curl -fsS --max-time 5 "${portal}_stcore/health" >/dev/null
   echo "OK: ECS portal $portal"
+  mapfile -t containers < <(docker ps -q --filter label=service=claimsense-local --filter label=container-index=0)
+  expect "${#containers[@]}" 1 "Running API container"
+  docker exec -i "${containers[0]}" python - <<'PY'
+import psycopg
+from claim_sense.db.session import checkpoint_dsn
+
+with psycopg.connect(checkpoint_dsn(), connect_timeout=5) as connection:
+    version, = connection.execute("SHOW server_version_num").fetchone()
+    if int(version) // 10000 != 18:
+        raise SystemExit(f"Expected PostgreSQL 18, got server_version_num={version}")
+    print(f"OK: ECS connects to PostgreSQL {version[:2]}.{int(version[2:])}")
+PY
 fi

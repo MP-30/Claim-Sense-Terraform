@@ -34,9 +34,9 @@ local-check:
 	@TF="$(TF)" bash scripts/check-local.sh
 
 local-seed:
-	@set -- $$(docker ps -q --filter label=service=claimsense-local --filter label=container-index=1); \
+	@set -- $$(docker ps -q --filter label=service=claimsense-local --filter label=container-index=0); \
 	test "$$#" -eq 1 || { echo "Expected one running Claim-Sense API container." >&2; exit 1; }; \
-	docker exec -i "$$1" sh -ec 'export POSTGRES_HOST=$$(cat /run/claimsense/db); exec python -' < "$(APP_DIR)/scripts/generate_data.py"
+	docker exec -i "$$1" python - < "$(APP_DIR)/scripts/generate_data.py"
 
 local-destroy:
 	$(LOCAL_TF) destroy

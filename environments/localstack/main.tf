@@ -27,6 +27,7 @@ provider "aws" {
     ecr            = local.gateway
     ecs            = local.gateway
     iam            = local.gateway
+    rds            = local.gateway
     s3             = local.gateway
     sts            = local.gateway
   }

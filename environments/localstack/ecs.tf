@@ -17,15 +17,10 @@ variable "openai_model" {
 }
 
 locals {
-  app_enabled = var.image_tag != null
-  data_root   = pathexpand("~/.cache/claimsense-ecs")
-  api_port    = 18000
-  portal_port = 18501
-  db_environment = [
-    { name = "POSTGRES_USER", value = "claimsense" },
-    { name = "POSTGRES_DB", value = "claimsense" },
-    { name = "POSTGRES_PASSWORD", value = "claimsense_local_demo" }
-  ]
+  app_enabled   = var.image_tag != null
+  data_root     = pathexpand("~/.cache/claimsense-ecs")
+  api_port      = 18000
+  portal_port   = 18501
   parameter_arn = var.openai_parameter_name == null ? null : "arn:aws:ssm:ap-south-1:000000000000:parameter${var.openai_parameter_name}"
   launcher      = abspath("${path.module}/../../scripts/start-local-ecs.py")
   launcher_mounts = [
@@ -81,6 +76,20 @@ resource "aws_iam_role_policy" "openai" {
   })
 }
 
+resource "aws_iam_role_policy" "database" {
+  count = local.app_enabled ? 1 : 0
+  name  = "read-database-secret"
+  role  = aws_iam_role.execution[0].name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["secretsmanager:GetSecretValue"]
+      Resource = aws_db_instance.app[0].master_user_secret[0].secret_arn
+    }]
+  })
+}
+
 resource "aws_ecs_task_definition" "app" {
   count                    = local.app_enabled ? 1 : 0
   family                   = "claimsense-local"
@@ -89,11 +98,6 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = 1024
   memory                   = 2048
   execution_role_arn       = aws_iam_role.execution[0].arn
-
-  volume {
-    name      = "database"
-    host_path = "${local.data_root}/postgres"
-  }
 
   volume {
     name      = "documents"
@@ -112,36 +116,25 @@ resource "aws_ecs_task_definition" "app" {
 
   container_definitions = jsonencode([
     {
-      name        = "db"
-      image       = "postgres:18"
-      essential   = true
-      environment = local.db_environment
-      entryPoint  = ["sh", "-ec"]
-      command = [<<-EOT
-        rm -f /run/claimsense/api /run/claimsense/db
-        hostname -i > /run/claimsense/db.tmp
-        mv /run/claimsense/db.tmp /run/claimsense/db
-        exec docker-entrypoint.sh postgres
-      EOT
-      ]
-      mountPoints = [
-        { sourceVolume = "database", containerPath = "/var/lib/postgresql" },
-        { sourceVolume = "task-addresses", containerPath = "/run/claimsense" }
-      ]
-      healthCheck = { command = ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "claimsense", "-d", "claimsense"], interval = 5, timeout = 3, retries = 6, startPeriod = 10 }
-    },
-    {
       name      = "api"
       image     = "${module.foundation.ecr_repository_url}:${var.image_tag}"
       essential = true
       command   = ["python", "/app/start-local-ecs.py", "api", tostring(local.api_port), tostring(local.portal_port)]
-      environment = concat(local.db_environment, var.openai_model == null ? [] : [
+      environment = concat([
+        { name = "POSTGRES_HOST", value = aws_db_instance.app[0].address },
+        { name = "POSTGRES_PORT", value = tostring(aws_db_instance.app[0].port) },
+        { name = "POSTGRES_USER", value = aws_db_instance.app[0].username },
+        { name = "POSTGRES_DB", value = aws_db_instance.app[0].db_name },
+        ], var.openai_model == null ? [] : [
         { name = "OPENAI_MODEL", value = var.openai_model }
       ])
-      secrets      = local.parameter_arn == null ? [] : [{ name = "OPENAI_API_KEY", valueFrom = local.parameter_arn }]
+      secrets = concat([
+        { name = "POSTGRES_PASSWORD", valueFrom = "${aws_db_instance.app[0].master_user_secret[0].secret_arn}:password::" }
+        ], local.parameter_arn == null ? [] : [
+        { name = "OPENAI_API_KEY", valueFrom = local.parameter_arn }
+      ])
       mountPoints  = concat(local.launcher_mounts, [{ sourceVolume = "documents", containerPath = "/app/data" }])
       dockerLabels = { "claimsense.launcher" = filesha256(local.launcher) }
-      dependsOn    = [{ containerName = "db", condition = "HEALTHY" }]
       portMappings = [{ containerPort = local.api_port, hostPort = local.api_port, protocol = "tcp" }]
       healthCheck  = { command = ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:${local.api_port}/health', timeout=3).close()"], interval = 5, timeout = 4, retries = 6, startPeriod = 10 }
     },
@@ -171,7 +164,7 @@ resource "aws_ecs_service" "app" {
     subnets = data.aws_subnets.default[0].ids
   }
 
-  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.openai]
+  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.openai, aws_iam_role_policy.database]
 }
 
 output "portal_url" {

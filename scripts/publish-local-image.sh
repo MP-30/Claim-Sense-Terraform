@@ -13,7 +13,7 @@ case "$repo" in
 esac
 
 data_dir="$HOME/.cache/claimsense-ecs/data"
-mkdir -p "$data_dir" "$HOME/.cache/claimsense-ecs/postgres" "$HOME/.cache/claimsense-ecs/run"
+mkdir -p "$data_dir" "$HOME/.cache/claimsense-ecs/run"
 install -m 644 "$app_dir/data/policy_wording.md" "$data_dir/policy_wording.md"
 
 image_id=$(docker image inspect "$image" --format '{{.Id}}')

@@ -27,9 +27,11 @@ def wait_for_peer(name, probe):
 def main():
     container, api_port, ui_port = sys.argv[1:]
     if container == "api":
-        os.environ["POSTGRES_HOST"] = wait_for_peer(
-            "db", lambda address: socket.create_connection((address, 5432), timeout=2)
-        )
+        # An older task revision can still use the original database container.
+        if "POSTGRES_HOST" not in os.environ:
+            os.environ["POSTGRES_HOST"] = wait_for_peer(
+                "db", lambda address: socket.create_connection((address, 5432), timeout=2)
+            )
         address_file = ADDRESSES / "api.tmp"
         address_file.write_text(socket.gethostbyname(socket.gethostname()))
         address_file.replace(ADDRESSES / "api")
