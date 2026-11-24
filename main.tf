@@ -28,27 +28,16 @@ data "aws_subnets" "default" {
 
 locals {
   openai_param_arn = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.me.account_id}:parameter${var.openai_param_name}"
-  image            = "${aws_ecr_repository.app.repository_url}:${var.image_tag}"
+  image            = "${module.foundation.ecr_repository_url}:${var.image_tag}"
   log_options = {
-    "awslogs-group"  = aws_cloudwatch_log_group.app.name
+    "awslogs-group"  = module.foundation.log_group
     "awslogs-region" = var.aws_region
   }
 }
 
-# ---------------------------------------------------------------- image registry
-resource "aws_ecr_repository" "app" {
-  name         = var.app_name
-  force_delete = true # lets `terraform destroy` remove the repo even if images exist
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-}
-
-# ---------------------------------------------------------------- logs
-resource "aws_cloudwatch_log_group" "app" {
-  name              = "/ecs/${var.app_name}"
-  retention_in_days = 7
+module "foundation" {
+  source   = "./modules/foundation"
+  app_name = var.app_name
 }
 
 # ---------------------------------------------------------------- IAM
@@ -118,10 +107,6 @@ resource "aws_security_group" "app" {
 }
 
 # ---------------------------------------------------------------- ECS
-resource "aws_ecs_cluster" "main" {
-  name = "${var.app_name}-cluster"
-}
-
 resource "aws_ecs_task_definition" "app" {
   family                   = var.app_name
   requires_compatibilities = ["FARGATE"]
@@ -165,7 +150,7 @@ resource "aws_ecs_task_definition" "app" {
 
 resource "aws_ecs_service" "app" {
   name                 = var.app_name
-  cluster              = aws_ecs_cluster.main.id
+  cluster              = module.foundation.cluster_arn
   task_definition      = aws_ecs_task_definition.app.arn
   desired_count        = 1
   launch_type          = "FARGATE"

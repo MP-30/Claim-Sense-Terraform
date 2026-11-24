@@ -1,9 +1,9 @@
 output "ecr_repository_url" {
-  value = aws_ecr_repository.app.repository_url
+  value = module.foundation.ecr_repository_url
 }
 
 output "cluster_name" {
-  value = aws_ecs_cluster.main.name
+  value = module.foundation.cluster_name
 }
 
 output "service_name" {
@@ -11,5 +11,9 @@ output "service_name" {
 }
 
 output "log_group" {
-  value = aws_cloudwatch_log_group.app.name
+  value = module.foundation.log_group
+}
+
+output "documents_bucket" {
+  value = module.foundation.documents_bucket
 }
