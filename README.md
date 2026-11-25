@@ -19,13 +19,16 @@ make local-image   # Push the existing Docker image and record its tag.
 make local-apply   # Deploy the ECS service using that tag.
 make local-check
 make local-seed    # Populate the ECS database and generate 20 sample claims.
+make local-user USERNAME=adjuster
 ```
 
 Open [the ECS portal](http://127.0.0.1:18501/) or [the ECS API docs](http://127.0.0.1:18000/docs). On a fresh environment, the first apply adds seven resources. The second adds the RDS instance, task definition, service and execution permissions. Run `make local-plan` again to check for drift. Run `terraform -chdir=environments/localstack output` for the application URLs, RDS endpoint, registry URL and bucket name.
 
+`make local-user` prompts for a Cognito password. Use at least 12 characters with uppercase and lowercase letters, a number and a symbol. The Cognito pool uses administrator-created accounts. Sign in with that username and password in Streamlit. Sessions use a 30-minute access token. Swagger claim requests also require a Cognito access token in the **Authorize** dialog.
+
 The local task runs the API and portal. LocalStack RDS runs PostgreSQL 18 separately. ECS injects the database password from the Secrets Manager secret managed by RDS. The first deployment may take several minutes while LocalStack installs the PostgreSQL packages. `make local-check` verifies the actual server version through the API container's database connection.
 
-Claim records, audit events and LangGraph checkpoints live in RDS. The API reads and writes PDFs in `~/.cache/claimsense-ecs/data` on the host. S3 integration is a later step.
+Claim records, audit events and LangGraph checkpoints live in RDS. For new claims, the Streamlit server uses five-minute presigned PUT URLs to upload PDFs to the private S3 bucket. The API uses the ECS task role to verify and read objects under `uploads/`. The host mount at `~/.cache/claimsense-ecs/data` still holds policy files, samples and earlier uploads.
 
 For an existing sidecar deployment, provision the RDS instance, take a PostgreSQL dump of the sidecar database, and restore it to RDS before switching ECS. The previous database volume is at `~/.cache/claimsense-ecs/postgres`. Fresh deployments can use `make local-seed`.
 
@@ -50,4 +53,4 @@ Run `make local-destroy` while LocalStack is running and confirm its plan. An S3
 
 The repository root is the **AWS** deployment configuration. It uses the same foundation module and also defines IAM, network access, an ECS task definition and a Fargate service. The `local-*` targets use the emulator configuration.
 
-For AWS, provision a private Amazon RDS PostgreSQL instance and scope its security group to ECS. Wire the API's filesystem-based PDF uploads to S3, publish the image to ECR, inject the runtime secrets and start the API and portal. The deployment test is to submit a synthetic claim, replace the API task, and approve the saved review with its documents still available.
+For AWS, provision a private Amazon RDS PostgreSQL instance and scope its security group to ECS. Set `CLAIMS_DOCUMENTS_BUCKET` for both containers and grant the task role access to the bucket's upload prefix. Publish the image to ECR, inject the runtime secrets and start the API and portal. The deployment test is to submit a synthetic claim, replace the API task, and approve the saved review with its documents still available.

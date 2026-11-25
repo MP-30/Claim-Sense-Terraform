@@ -5,7 +5,7 @@ LOCAL_NETWORK = claimsense-local
 APP_DIR ?= $(abspath ../Claim-Sense)
 APP_IMAGE ?= claim-sense-api:latest
 
-.PHONY: local-up local-init local-image local-plan local-apply local-check local-seed local-destroy
+.PHONY: local-up local-init local-image local-plan local-apply local-check local-seed local-user local-destroy
 
 local-up:
 	@if curl -fsS --max-time 3 $(GATEWAY)/_localstack/health >/dev/null 2>&1; then \
@@ -32,6 +32,9 @@ local-apply:
 
 local-check:
 	@TF="$(TF)" bash scripts/check-local.sh
+
+local-user:
+	@TF="$(TF)" python3 scripts/create-local-user.py "$(USERNAME)"
 
 local-seed:
 	@set -- $$(docker ps -q --filter label=service=claimsense-local --filter label=container-index=0); \

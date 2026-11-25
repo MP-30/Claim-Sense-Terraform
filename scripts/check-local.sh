@@ -38,6 +38,7 @@ if portal=$(output portal_url 2>/dev/null); then
   expect "$(local_aws ecs describe-services --cluster "$cluster" --services claimsense-local --query 'services[0].runningCount')" 1 "Running ECS task"
   curl -fsS --max-time 5 "$api/health" >/dev/null
   echo "OK: ECS API $api"
+  expect "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' "$api/claims")" 401 "Claim API requires Cognito sign-in"
   curl -fsS --max-time 5 "${portal}_stcore/health" >/dev/null
   echo "OK: ECS portal $portal"
   mapfile -t containers < <(docker ps -q --filter label=service=claimsense-local --filter label=container-index=0)

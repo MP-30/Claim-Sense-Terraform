@@ -23,6 +23,7 @@ provider "aws" {
 
   endpoints {
     cloudwatchlogs = local.gateway
+    cognitoidp     = local.gateway
     ec2            = local.gateway
     ecr            = local.gateway
     ecs            = local.gateway

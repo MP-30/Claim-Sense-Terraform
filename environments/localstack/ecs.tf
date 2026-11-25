@@ -23,6 +23,14 @@ locals {
   portal_port   = 18501
   parameter_arn = var.openai_parameter_name == null ? null : "arn:aws:ssm:ap-south-1:000000000000:parameter${var.openai_parameter_name}"
   launcher      = abspath("${path.module}/../../scripts/start-local-ecs.py")
+  cognito_environment = local.app_enabled ? [
+    { name = "CLAIMS_AUTH_REQUIRED", value = "true" },
+    { name = "COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.portal[0].id },
+    { name = "COGNITO_ISSUER", value = "http://localhost.localstack.cloud:4566/${aws_cognito_user_pool.portal[0].id}" },
+  ] : []
+  documents_environment = [
+    { name = "CLAIMS_DOCUMENTS_BUCKET", value = module.foundation.documents_bucket },
+  ]
   launcher_mounts = [
     { sourceVolume = "task-addresses", containerPath = "/run/claimsense" },
     { sourceVolume = "launcher", containerPath = "/app/start-local-ecs.py", readOnly = true }
@@ -90,6 +98,33 @@ resource "aws_iam_role_policy" "database" {
   })
 }
 
+resource "aws_iam_role" "task" {
+  count              = local.app_enabled ? 1 : 0
+  name               = "claimsense-local-task"
+  assume_role_policy = aws_iam_role.execution[0].assume_role_policy
+}
+
+resource "aws_iam_role_policy" "documents" {
+  count = local.app_enabled ? 1 : 0
+  name  = "claim-pdfs"
+  role  = aws_iam_role.task[0].name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:GetObject", "s3:PutObject"]
+      Resource = "${module.foundation.documents_bucket_arn}/uploads/*"
+      }, {
+      Effect   = "Allow"
+      Action   = "s3:ListBucket"
+      Resource = module.foundation.documents_bucket_arn
+      Condition = {
+        StringLike = { "s3:prefix" = "uploads/*" }
+      }
+    }]
+  })
+}
+
 resource "aws_ecs_task_definition" "app" {
   count                    = local.app_enabled ? 1 : 0
   family                   = "claimsense-local"
@@ -98,6 +133,7 @@ resource "aws_ecs_task_definition" "app" {
   cpu                      = 1024
   memory                   = 2048
   execution_role_arn       = aws_iam_role.execution[0].arn
+  task_role_arn            = aws_iam_role.task[0].arn
 
   volume {
     name      = "documents"
@@ -120,7 +156,9 @@ resource "aws_ecs_task_definition" "app" {
       image     = "${module.foundation.ecr_repository_url}:${var.image_tag}"
       essential = true
       command   = ["python", "/app/start-local-ecs.py", "api", tostring(local.api_port), tostring(local.portal_port)]
-      environment = concat([
+      environment = concat(local.cognito_environment, local.documents_environment, [
+        { name = "AWS_DEFAULT_REGION", value = "ap-south-1" },
+        { name = "AWS_ENDPOINT_URL_S3", value = "http://s3.localhost.localstack.cloud:4566" },
         { name = "POSTGRES_HOST", value = aws_db_instance.app[0].address },
         { name = "POSTGRES_PORT", value = tostring(aws_db_instance.app[0].port) },
         { name = "POSTGRES_USER", value = aws_db_instance.app[0].username },
@@ -143,6 +181,7 @@ resource "aws_ecs_task_definition" "app" {
       image        = "${module.foundation.ecr_repository_url}:${var.image_tag}"
       essential    = true
       command      = ["python", "/app/start-local-ecs.py", "ui", tostring(local.api_port), tostring(local.portal_port)]
+      environment  = concat(local.cognito_environment, local.documents_environment)
       mountPoints  = local.launcher_mounts
       dependsOn    = [{ containerName = "api", condition = "HEALTHY" }]
       portMappings = [{ containerPort = local.portal_port, hostPort = local.portal_port, protocol = "tcp" }]
@@ -164,7 +203,7 @@ resource "aws_ecs_service" "app" {
     subnets = data.aws_subnets.default[0].ids
   }
 
-  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.openai, aws_iam_role_policy.database]
+  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.openai, aws_iam_role_policy.database, aws_iam_role_policy.documents]
 }
 
 output "portal_url" {
