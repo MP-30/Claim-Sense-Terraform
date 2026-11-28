@@ -16,19 +16,20 @@ make local-up
 make local-init
 make local-apply   # Create the foundation on the first run.
 make local-image   # Push the existing Docker image and record its tag.
-make local-apply   # Deploy the ECS service using that tag.
+make local-worker-image  # Build the Lambda image and push it to LocalStack ECR.
+make local-apply   # Deploy ECS, Lambda and the SQS queues.
 make local-check
 make local-seed    # Populate the ECS database and generate 20 sample claims.
 make local-user USERNAME=adjuster
 ```
 
-Open [the ECS portal](http://127.0.0.1:18501/) or [the ECS API docs](http://127.0.0.1:18000/docs). On a fresh environment, the first apply adds seven resources. The second adds the RDS instance, task definition, service and execution permissions. Run `make local-plan` again to check for drift. Run `terraform -chdir=environments/localstack output` for the application URLs, RDS endpoint, registry URL and bucket name.
+Open [the ECS portal](http://127.0.0.1:18501/) or [the ECS API docs](http://127.0.0.1:18000/docs). On a fresh environment, the first apply creates the foundation. The second adds RDS, ECS, the Lambda worker and the SQS mappings. Run `make local-plan` again to check for drift. Terraform outputs include the application URLs, RDS endpoint, registry URL, bucket name, worker name and processing queue URL.
 
 `make local-user` prompts for a Cognito password. Use at least 12 characters with uppercase and lowercase letters, a number and a symbol. The Cognito pool uses administrator-created accounts. Sign in with that username and password in Streamlit. Sessions use a 30-minute access token. Swagger claim requests also require a Cognito access token in the **Authorize** dialog.
 
 The local task runs the API and portal. LocalStack RDS runs PostgreSQL 18 separately. ECS injects the database password from the Secrets Manager secret managed by RDS. The first deployment may take several minutes while LocalStack installs the PostgreSQL packages. `make local-check` verifies the actual server version through the API container's database connection.
 
-Claim records, audit events and LangGraph checkpoints live in RDS. For new claims, the Streamlit server uses five-minute presigned PUT URLs to upload PDFs to the private S3 bucket. The API uses the ECS task role to verify and read objects under `uploads/`. The host mount at `~/.cache/claimsense-ecs/data` still holds policy files, samples and earlier uploads.
+Claim records, audit events and LangGraph checkpoints live in RDS. Streamlit uploads new PDFs to private S3 using five-minute presigned PUT URLs. FastAPI verifies the objects and submits the claim ID to SQS. Lambda reads the documents from S3, uses the RDS password from Secrets Manager and runs the workflow. The portal refreshes the claim status during processing. The host mount at `~/.cache/claimsense-ecs/data` still holds samples and earlier uploads.
 
 For an existing sidecar deployment, provision the RDS instance, take a PostgreSQL dump of the sidecar database, and restore it to RDS before switching ECS. The previous database volume is at `~/.cache/claimsense-ecs/postgres`. Fresh deployments can use `make local-seed`.
 

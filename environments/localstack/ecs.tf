@@ -165,7 +165,10 @@ resource "aws_ecs_task_definition" "app" {
         { name = "POSTGRES_DB", value = aws_db_instance.app[0].db_name },
         ], var.openai_model == null ? [] : [
         { name = "OPENAI_MODEL", value = var.openai_model }
-      ])
+        ], local.worker_enabled ? [
+        { name = "CLAIMS_PROCESSING_QUEUE_URL", value = aws_sqs_queue.processing[0].url },
+        { name = "AWS_ENDPOINT_URL_SQS", value = "http://localhost.localstack.cloud:4566" },
+      ] : [])
       secrets = concat([
         { name = "POSTGRES_PASSWORD", valueFrom = "${aws_db_instance.app[0].master_user_secret[0].secret_arn}:password::" }
         ], local.parameter_arn == null ? [] : [
@@ -203,7 +206,14 @@ resource "aws_ecs_service" "app" {
     subnets = data.aws_subnets.default[0].ids
   }
 
-  depends_on = [aws_iam_role_policy_attachment.execution, aws_iam_role_policy.openai, aws_iam_role_policy.database, aws_iam_role_policy.documents]
+  depends_on = [
+    aws_iam_role_policy_attachment.execution,
+    aws_iam_role_policy.openai,
+    aws_iam_role_policy.database,
+    aws_iam_role_policy.documents,
+    aws_iam_role_policy.enqueue,
+    aws_lambda_event_source_mapping.processing,
+  ]
 }
 
 output "portal_url" {

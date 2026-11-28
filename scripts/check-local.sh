@@ -31,6 +31,11 @@ expect "$(local_aws s3api get-bucket-versioning --bucket "$bucket" --query Statu
 expect "$(local_aws s3api get-bucket-encryption --bucket "$bucket" --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm')" AES256 "S3 default encryption"
 expect "$(local_aws s3api get-public-access-block --bucket "$bucket" --query 'length(values(PublicAccessBlockConfiguration)[?@ == `true`])')" 4 "S3 public access block settings"
 
+if worker=$(output worker_name 2>/dev/null); then
+  expect "$(local_aws lambda get-function-configuration --function-name "$worker" --query State)" Active "Lambda worker $worker"
+  expect "$(local_aws lambda list-event-source-mappings --function-name "$worker" --query "length(EventSourceMappings[?State=='Enabled'])")" 2 "Enabled Lambda queue mappings"
+fi
+
 if portal=$(output portal_url 2>/dev/null); then
   api=$(output api_url)
   database=$(output database_identifier)

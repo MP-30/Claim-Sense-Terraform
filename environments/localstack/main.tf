@@ -28,8 +28,10 @@ provider "aws" {
     ecr            = local.gateway
     ecs            = local.gateway
     iam            = local.gateway
+    lambda         = local.gateway
     rds            = local.gateway
     s3             = local.gateway
+    sqs            = local.gateway
     sts            = local.gateway
   }
 }

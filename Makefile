@@ -4,8 +4,9 @@ GATEWAY = http://127.0.0.1:4566
 LOCAL_NETWORK = claimsense-local
 APP_DIR ?= $(abspath ../Claim-Sense)
 APP_IMAGE ?= claim-sense-api:latest
+WORKER_IMAGE ?= claim-sense-worker:latest
 
-.PHONY: local-up local-init local-image local-plan local-apply local-check local-seed local-user local-destroy
+.PHONY: local-up local-init local-image local-worker-image local-plan local-apply local-check local-seed local-user local-destroy
 
 local-up:
 	@if curl -fsS --max-time 3 $(GATEWAY)/_localstack/health >/dev/null 2>&1; then \
@@ -23,6 +24,10 @@ local-init:
 
 local-image:
 	@TF="$(TF)" bash scripts/publish-local-image.sh "$(APP_DIR)" "$(APP_IMAGE)"
+
+local-worker-image:
+	docker build --provenance=false --sbom=false --target worker -t "$(WORKER_IMAGE)" "$(APP_DIR)"
+	@TF="$(TF)" bash scripts/publish-local-image.sh "$(APP_DIR)" "$(WORKER_IMAGE)" worker
 
 local-plan:
 	$(LOCAL_TF) plan
